@@ -79,6 +79,7 @@ local function NewRemoteTable(token: Token, id: Id, write_end: boolean)
 		local root = RemoteTables[token]
 		local token_name = TokenRegistry.GetTokenName(token)
 		local promise = TableReadyPromises[token_name]
+		print(TableReadyPromises)
 		promise:Resolve("Success", root)
 	else
 		local root = {}
@@ -209,6 +210,7 @@ end
 	@return data: Ready-only replicated table.
 ]]
 function Client.WaitForTable(token_name: TokenName, timeout: number?): any
+	local token_name = Util.SanitizeForAttributeName(token_name)
 	local token = TokenRegistry.WaitForToken(token_name, timeout)
 	if not token then return nil end
 	if RemoteTables[token] then return RemoteTables[token] end
