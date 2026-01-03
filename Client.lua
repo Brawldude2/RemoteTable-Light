@@ -60,11 +60,11 @@ local function UnregisterValue(token: Token, parent: any, key: Key)
 	local value = parent[key]
 	if typeof(value) ~= "table" then return end
 	
-	-- Unregister the table
-	local id = IdByTable[parent]
-	IdByTable[parent] = nil
+	-- Unregister the value
+	local id = IdByTable[value]
+	IdByTable[value] = nil
 	TableById[id] = nil
-	PathByTable[parent] = nil
+	PathByTable[value] = nil
 	
 	local parent_path = PathByTable[parent]
 	TriggerSignal("ChildRemoved", token, parent_path, value, key)
@@ -99,7 +99,6 @@ local function NewTable(token: Token, id: Id, key: Key, assigned_id: Id)
 	UnregisterValue(token, parent, key)
 	
 	local new_table = {}
-	parent[key] = new_table
 	TriggerSignal("ChildAdded", token, parent_path, new_table, key)
 	
 	-- Register new table
