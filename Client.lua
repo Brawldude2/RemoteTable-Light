@@ -79,7 +79,6 @@ local function NewRemoteTable(token: Token, id: Id, write_end: boolean)
 		local root = RemoteTables[token]
 		local token_name = TokenRegistry.GetTokenName(token)
 		local promise = TableReadyPromises[token_name]
-		print(TableReadyPromises)
 		promise:Resolve("Success", root)
 	else
 		local root = {}
