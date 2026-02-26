@@ -15,6 +15,7 @@ local DeepCopy = Util.DeepCopy
 local BufferAppend = Util.BufferAppend
 local UtilGetTableId = Util.GetTableId
 local BufferWriteU8 = Util.BufferWriteU8
+local BufferWriteU16 = Util.BufferWriteU16
 local BufferTruncate = Util.BufferTruncate
 local IsValidValueType = Util.IsValidValueType
 
@@ -28,21 +29,45 @@ type ListenerTable = {[Player]: boolean}
 local SET_OPCODE = Util.OpCodeLookup["Set"]
 local NEW_TABLE_OPCODE = Util.OpCodeLookup["NewTable"]
 local NEW_REMOTE_TABLE_OPCODE = Util.OpCodeLookup["NewRemoteTable"]
+local DESTROY_REMOTE_TABLE_OPCODE = Util.OpCodeLookup["DestroyRemoteTable"]
 
 local SetTablePacket = Packets.Set
 local NewTablePacket = Packets.NewTable
 local NewRemoteTablePacket = Packets.NewRemoteTable
+local DestroyRemoteTablePacket = Packets.DestroyRemoteTable
+
+local SendEventStream = Packets.SendEventStream
 
 local ClientTokens = {} :: {[Player]: {[Token]: boolean}}
 local RemoteTables = {} :: {[Token]: {
 	Data: any,
-	ConnectedListeners: ListenerTable,
-	DisconnectedListeners: ListenerTable,
+	Listeners: {[Player]: "Connected" | "Disconnected"},
 }}
 
 local TokenLinks = {} :: {[Table]: Token | false}
 local ChangedTables = {} :: {[Token]: boolean}
 local TableEventStream = {} :: {[Token]: {Offset: number, Buffer: buffer}}
+
+local function ResetRemoteTableBuffer(token: Token)
+	local event_stream = TableEventStream[token]
+	local event_offset = 0
+	local event_buffer = event_stream.Buffer
+	
+	event_buffer, event_offset = BufferWriteU16(event_buffer, event_offset, token)
+	event_stream.Buffer = event_buffer
+	event_stream.Offset = event_offset
+end
+
+local function DispatchRemoteTableEventStream(token: Token)
+	local event_stream = TableEventStream[token]
+	local package = BufferTruncate(event_stream.Buffer, event_stream.Offset)
+	for listener, state in RemoteTables[token].Listeners do
+		if state ~= "Connected" then continue end
+		SendEventStream:FireClient(listener, package)
+	end
+	ResetRemoteTableBuffer(token)
+	ChangedTables[token] = nil
+end
 
 local function PushEvent(token: Token, event: string, ...: any)
 	ChangedTables[token] = true
@@ -126,6 +151,9 @@ local function GetRootSnapshotStream(token: number): buffer
 	local stream = buffer.create(128)
 	local offset = 0
 	
+	-- Token header
+	stream, offset = BufferWriteU16(stream, offset, token)
+	
 	-- Sync write start
 	local event_package = NewRemoteTablePacket:Serialize(root_id, false)
 	stream, offset = BufferWriteU8(stream, offset, NEW_REMOTE_TABLE_OPCODE)
@@ -155,41 +183,57 @@ end
 local function ConnectClient(token: Token, client: Player)
 	local remote_table = RemoteTables[token]
 	if not remote_table then return end
-	if not remote_table.DisconnectedListeners[client] then return end
 	
-	remote_table.ConnectedListeners[client] = true
-	remote_table.DisconnectedListeners[client] = nil
+	local state = remote_table.Listeners[client]
+	if not state or state ~= "Disconnected" then return end
 	
-	Packets.SendEventStream:FireClient(client, token, GetRootSnapshotStream(token))
+	remote_table.Listeners[client] = "Connected"
+	Packets.SendEventStream:FireClient(client, GetRootSnapshotStream(token))
 end
 
 local function DisconnectClient(token: Token, client: Player)
 	local remote_table = RemoteTables[token]
-	if not remote_table.ConnectedListeners[client] then return end
-
-	remote_table.ConnectedListeners[client] = nil
-	remote_table.DisconnectedListeners[client] = true
+	if not remote_table then return end
+	
+	local state = remote_table.Listeners[client]
+	if not state or state ~= "Connected" then return end
+	
+	remote_table.Listeners[client] = "Disconnected"
+	
+	local stream = buffer.create(128)
+	local offset = 0
+	
+	-- Token header
+	stream, offset = BufferWriteU16(stream, offset, token)
+	
+	local event_package = DestroyRemoteTablePacket:Serialize(token)
+	stream, offset = BufferWriteU8(stream, offset, DESTROY_REMOTE_TABLE_OPCODE)
+	stream, offset = BufferAppend(stream, offset, event_package)
+	Packets.SendEventStream:FireClient(client, BufferTruncate(stream, offset))
 end
 
 local function AddClient(token: Token, client: Player)
 	local remote_table = RemoteTables[token]
-	if remote_table.DisconnectedListeners[client] or remote_table.ConnectedListeners[client] then
-		return
-	end
-	remote_table.DisconnectedListeners[client] = true
+	assert(remote_table, "[RemoteTable]: AddClient failed. RemoteTable does not exist.")
+	local state = remote_table.Listeners[client]
+	if state then return end
 	
+	remote_table.Listeners[client] = "Disconnected"
 	local client_tokens = GetClientTokens(client)
 	client_tokens[token] = true
 end
 
 local function RemoveClient(token: Token, client: Player)
 	local remote_table = RemoteTables[token]
-	if not remote_table.DisconnectedListeners[client] and not remote_table.ConnectedListeners[client] then
-		return
+	assert(remote_table, "[RemoteTable]: RemoveClient failed. RemoteTable does not exist.")
+	local state = remote_table.Listeners[client]
+	if not state then return end
+	
+	if state == "Connected" then
+		DisconnectClient(token, client)
 	end
-	remote_table.ConnectedListeners[client] = nil
-	remote_table.DisconnectedListeners[client] = nil
-
+	
+	remote_table.Listeners[client] = nil
 	local client_tokens = GetClientTokens(client)
 	client_tokens[token] = nil
 end
@@ -213,6 +257,17 @@ function Server.Increment(parent: any, key: Key, value: number)
 	RegisterValue(token, parent, key, parent[key])
 end
 
+function Server.Insert<V>(tbl: {V}, value: V)
+	assert(IsValidValueType(value), "Value can not be an Instance.")
+
+	table.insert(tbl, value)
+
+	local token = TokenLinks[tbl] :: number
+	if token then
+		PushEvent(token, "Insert", UtilGetTableId(tbl), value)
+	end
+end
+
 function Server.InsertAt<V>(tbl: {V}, pos: number?, value: V)
 	local pos = pos or #tbl + 1
 	assert(typeof(pos) == "number", "Index must be a number.")
@@ -222,18 +277,7 @@ function Server.InsertAt<V>(tbl: {V}, pos: number?, value: V)
 
 	local token = TokenLinks[tbl] :: number
 	if token then
-		PushEvent(token, "Insert", UtilGetTableId(tbl), pos, value)
-	end
-end
-
-function Server.Insert<V>(tbl: {V}, value: V)
-	assert(IsValidValueType(value), "Value can not be an Instance.")
-
-	table.insert(tbl, value)
-
-	local token = TokenLinks[tbl] :: number
-	if token then
-		PushEvent(token, "Insert", UtilGetTableId(tbl), #tbl + 1, value)
+		PushEvent(token, "InsertAt", UtilGetTableId(tbl), pos, value)
 	end
 end
 
@@ -281,8 +325,7 @@ function Server.Create<T>(token_name: string, template: T, selective_replication
 	}
 	RemoteTables[token] = {
 		Data = root,
-		ConnectedListeners = {},
-		DisconnectedListeners = {},
+		Listeners = {},
 	}
 	TokenLinks[root] = token
 	if not selective_replication then
@@ -297,6 +340,7 @@ function Server.Create<T>(token_name: string, template: T, selective_replication
 	for k, v in root :: any do
 		RegisterValue(token, root, k, v)
 	end
+	ResetRemoteTableBuffer(token)
 	return root
 end
 
@@ -319,10 +363,10 @@ function Server.Destroy<T>(token_name: string)
 	local remote_table = RemoteTables[token]
 	local root = remote_table.Data
 	
-	for client, _ in remote_table.ConnectedListeners do
-		RemoveClient(token, client)
-	end
-	for client, _ in remote_table.DisconnectedListeners do
+	PushEvent(token, "DestroyRemoteTable", token)
+	DispatchRemoteTableEventStream(token)
+	
+	for client, state in remote_table.Listeners do
 		RemoveClient(token, client)
 	end
 	
@@ -362,17 +406,11 @@ function Server.RemoveClient(token_name: TokenName, clients: Player | {Player})
 end
 
 local DispatchLoop = task.spawn(function()
-	local SendEventStream = Packets.SendEventStream
 	while true do
 		coroutine.yield()
-		for token, _ in ChangedTables do
-			local event_stream = TableEventStream[token]
-			if event_stream.Offset == 0 then continue end
-			local package = Util.BufferTruncate(event_stream.Buffer, event_stream.Offset)
-			for listener, _ in RemoteTables[token].ConnectedListeners do
-				SendEventStream:FireClient(listener, token, package)
-			end
-			event_stream.Offset = 0
+		for token, changed in ChangedTables do
+			if not changed then continue end
+			DispatchRemoteTableEventStream(token)
 		end
 	end
 end)

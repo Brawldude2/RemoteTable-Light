@@ -53,7 +53,7 @@ game.Players.PlayerAdded:Connect(function(player: Player)
 	task.wait(1)
 	
 	-- {"Coffee", "Phone", "Keys", "Wallet"}
-	RemoteTable.Insert(player_data.Inventory, 1, "Coffee")
+	RemoteTable.InsertAt(player_data.Inventory, 1, "Coffee")
 	task.wait(1)
 	
 	-- {"Coffee", "Phone", "Wallet"}
@@ -62,6 +62,10 @@ game.Players.PlayerAdded:Connect(function(player: Player)
 
 	-- {"Wallet", "Phone"}
 	RemoteTable.SwapRemove(player_data.Inventory, 1)
+	task.wait(1)
+	
+	-- {"Wallet", "Phone", "Blackbox"}
+	RemoteTable.Insert(player_data.Inventory, "Blackbox")
 	task.wait(1)
 
 	-- {}
@@ -72,5 +76,8 @@ game.Players.PlayerAdded:Connect(function(player: Player)
 	
 	-- This won't replicate as the client is removed from listeners
 	RemoteTable.Set(player_data, "Cash", 99999)
+	task.wait(1)
+	
+	RemoteTable.Destroy(token)
 	task.wait(1)
 end)

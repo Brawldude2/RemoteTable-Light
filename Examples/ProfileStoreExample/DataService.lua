@@ -26,7 +26,7 @@ local PlayerDatas = {} :: {[Player]: PlayerData}
 DataService.PlayerDatas = PlayerDatas
 DataService.DataLoaded = Signal.new()
 
-function DataService.GetData(player: Player): PlayerData?
+function DataService.GetData(player: Player): ProfileData?
 	return RemoteTable.Get(`PlayerData{player.UserId}`)
 end
 

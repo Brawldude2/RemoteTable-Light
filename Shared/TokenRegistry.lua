@@ -45,12 +45,12 @@ local function Register(name: TokenName, token: Token?): Token
 	local token = token or FindFirstGap(TokenNames)
 	TokenNames[token] = name
 	TokenLookup[name] = token
-	
+
 	local promise = TokenPromises[name]
 	if promise then
 		promise:Resolve("Success", token)
 	end
-	
+
 	if IsServer then
 		script:SetAttribute(name, token)
 		TokenRemote:FireAllClients("A", name, token)
@@ -64,12 +64,12 @@ local function Unregister(name: TokenName)
 	if token then
 		TokenLookup[name] = nil
 	end
-	
+
 	local promise = TokenPromises[name]
 	if promise then
 		promise:Cancel()
 	end
-	
+
 	if IsServer then
 		script:SetAttribute(name, nil)
 		TokenRemote:FireAllClients("R", name)
@@ -99,16 +99,16 @@ function TokenRegistry.WaitForToken(name: TokenName, timeout: number?): Token
 	if script:GetAttribute(name) ~= nil then
 		return script:GetAttribute(name)
 	end
-	
+
 	local promise = TokenPromises[name]
 	if promise then return select(2, promise:Await()) end
-	
+
 	local promise = PromiseLight.new(timeout) :: any
 	TokenPromises[name] = promise
 	promise.PreResolve = function()
 		TokenPromises[name] = nil
 	end
-	
+
 	return select(2, promise:Await())
 end
 
@@ -116,6 +116,9 @@ TokenRegistry.Register = Register
 TokenRegistry.Unregister = Unregister
 
 if IsClient then
+	for token_name, token in script:GetAttributes() do
+		Register(token_name, token)
+	end
 	TokenRemote.OnClientEvent:Connect(function(command: "A" | "R", token_name: TokenName, token: Token)
 		if command == "A" then Register(token_name, token) end
 		if command == "R" then Unregister(token_name) end

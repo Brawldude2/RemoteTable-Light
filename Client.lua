@@ -92,6 +92,28 @@ local function NewRemoteTable(token: Token, id: Id, write_end: boolean)
 	end
 end
 
+local function DestroyRemoteTable(token: Token)
+	for path, signals in DataSignals[token] do
+		if signals.Changed then
+			signals.Changed:DisconnectAll()
+		end
+		if signals.ChildAdded then
+			signals.ChildAdded:DisconnectAll()
+		end
+		if signals.ChildRemoved then
+			signals.ChildRemoved:DisconnectAll()
+		end
+	end
+	
+	local root = RemoteTables[token]
+	for k, v in root do
+		UnregisterValue(token, root, k)
+	end
+	
+	DataSignals[token] = nil
+	RemoteTables[token] = nil
+end
+
 local function NewTable(token: Token, id: Id, key: Key, assigned_id: Id)
 	local parent = TableById[id]
 	local parent_path = PathByTable[parent]
@@ -130,10 +152,18 @@ local function Set(token: Token, id: Id, key: Key, value: any)
 	end
 end
 
-local function Insert(token: Token, id: Id, index: number, value: any)
+local function Insert(token: Token, id: Id, value: any)
 	local parent = TableById[id]
 	local parent_path = PathByTable[parent]
 	
+	table.insert(parent, value)
+	TriggerSignal("ChildAdded", token, parent_path, value, #parent)
+end
+
+local function InsertAt(token: Token, id: Id, index: number, value: any)
+	local parent = TableById[id]
+	local parent_path = PathByTable[parent]
+
 	table.insert(parent, index, value)
 	TriggerSignal("ChildAdded", token, parent_path, value, index)
 end
@@ -166,18 +196,25 @@ end
 
 local EventFunctions = {
 	NewRemoteTable = NewRemoteTable,
+	DestroyRemoteTable = DestroyRemoteTable,
 	NewTable = NewTable,
 	Set = Set,
 	Insert = Insert,
+	InsertAt = InsertAt,
 	Remove = Remove,
 	SwapRemove = SwapRemove,
 	Clear = Clear,
 } :: {[string]: (Token, ...any) -> ()}
 
-Packets.SendEventStream.OnClientEvent:Connect(function(token: Token, package: buffer)
+Packets.SendEventStream.OnClientEvent:Connect(function(package: buffer)
 	local package_len = buffer.len(package)
-	local deserialized
 	local offset = 0
+	
+	-- Token header
+	local token = buffer.readu16(package, offset)
+	offset += 2
+	
+	local deserialized
 	while offset < package_len do
 		local op_code = buffer.readu8(package, offset)
 		offset += 1

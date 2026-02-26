@@ -24,15 +24,15 @@ local function DeepCopy<T>(target: T): T
 	end
 end
 
-function Util.SanitizeForAttributeName(str)
+local function SanitizeForAttributeName(str)
 	return (str:gsub("[^%w]", "_"))
 end
 
-function Util.ToPathString(path_list: {Key}): string
+local function ToPathString(path_list: {Key}): string
 	return table.concat(path_list, SEPERATOR)
 end
 
-function Util.AppendPath(path: Path, key: Key): string
+local function AppendPath(path: Path, key: Key): string
 	if path == "" then
 		return `{key}`
 	else
@@ -40,22 +40,22 @@ function Util.AppendPath(path: Path, key: Key): string
 	end
 end
 
-function Util.IsValidKeyType(value: any): boolean
+local function IsValidKeyType(value: any): boolean
 	local type_ = typeof(value)
 	return type_ == "string" or type_ == "number"
 end
 
-function Util.IsValidValueType(value: any): boolean
+local function IsValidValueType(value: any): boolean
 	return typeof(value) ~= "Instance"
 end
 
 @native
-function Util.GetTableId(tbl: any): number
+local function GetTableId(tbl: any): number
 	return tonumber(tostring(tbl):sub(8)) :: number
 end
 
 @native
-function Util.SwapRemove<V>(tbl: {V}, pos: number?): V?
+local function SwapRemove<V>(tbl: {V}, pos: number?): V?
 	local len = #tbl
 	if len == 0 or (pos and pos > len) then
 		return nil
@@ -69,7 +69,7 @@ function Util.SwapRemove<V>(tbl: {V}, pos: number?): V?
 end
 
 @native
-function Util.ExpandBuffer(target: buffer): buffer
+local function ExpandBuffer(target: buffer): buffer
 	local target_len = buffer.len(target)
 	if target_len == 0 then
 		target_len = 1
@@ -80,33 +80,43 @@ function Util.ExpandBuffer(target: buffer): buffer
 end
 
 @native
-function Util.BufferWriteU8(target: buffer, offset: number, value: number): (buffer, number)
+local function BufferWriteU8(target: buffer, offset: number, value: number): (buffer, number)
 	local final_offset = offset + 1
 	while final_offset > buffer.len(target) do
-		target = Util.ExpandBuffer(target)
+		target = ExpandBuffer(target)
 	end
 	buffer.writeu8(target, offset, value)
 	return target, final_offset
 end
 
 @native
-function Util.BufferAppend(target: buffer, offset: number, source: buffer): (buffer, number)
+local function BufferWriteU16(target: buffer, offset: number, value: number): (buffer, number)
+	local final_offset = offset + 2
+	while final_offset > buffer.len(target) do
+		target = ExpandBuffer(target)
+	end
+	buffer.writeu16(target, offset, value)
+	return target, final_offset
+end
+
+@native
+local function BufferAppend(target: buffer, offset: number, source: buffer): (buffer, number)
 	local final_offset = buffer.len(source) + offset
 	while final_offset > buffer.len(target) do
-		target = Util.ExpandBuffer(target)
+		target = ExpandBuffer(target)
 	end
 	buffer.copy(target, offset, source)
 	return target, final_offset
 end
 
 @native
-function Util.BufferTruncate(target: buffer, offset: number): buffer
+local function BufferTruncate(target: buffer, offset: number): buffer
 	local truncated = buffer.create(offset)
 	buffer.copy(truncated, 0, target, 0, offset)
 	return truncated
 end
 
-Util.OpCodes = {"NewRemoteTable", "NewTable", "Set", "Insert", "Remove", "SwapRemove", "Clear"}
+Util.OpCodes = {"NewRemoteTable", "DestroyRemoteTable", "NewTable", "Set", "Insert", "InsertAt", "Remove", "SwapRemove", "Clear"}
 Util.OpCodeLookup = {} :: {[string]: number}
 for index, event in Util.OpCodes do
 	Util.OpCodeLookup[event] = index
@@ -115,5 +125,17 @@ table.freeze(Util.OpCodes)
 table.freeze(Util.OpCodeLookup)
 
 Util.DeepCopy = DeepCopy
+Util.SanitizeForAttributeName = SanitizeForAttributeName
+Util.ToPathString = ToPathString
+Util.AppendPath = AppendPath
+Util.IsValidKeyType = IsValidKeyType
+Util.IsValidValueType = IsValidValueType
+Util.GetTableId = GetTableId
+Util.SwapRemove = SwapRemove
+Util.ExpandBuffer = ExpandBuffer
+Util.BufferWriteU8 = BufferWriteU8
+Util.BufferWriteU16 = BufferWriteU16
+Util.BufferAppend = BufferAppend
+Util.BufferTruncate = BufferTruncate
 
 return Util
