@@ -1,0 +1,11 @@
+{
+  "name": "RemoteTableLight",
+  "tree": {
+    "$path": "src",
+    "$properties": {
+      "Attributes": {
+        "Version": {"String": "1.2"}
+      }
+    }
+  }
+}

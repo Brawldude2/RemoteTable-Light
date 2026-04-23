@@ -1,0 +1,12 @@
+{
+  "name": "RemoteTableLight",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "RemoteTableLight": {
+        "$path": "src"
+      }
+    }
+  }
+}
