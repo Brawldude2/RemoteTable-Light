@@ -93,21 +93,26 @@ local function NewRemoteTable(token: Token, id: Id, write_end: boolean)
 end
 
 local function DestroyRemoteTable(token: Token)
-	for path, signals in DataSignals[token] do
-		if signals.Changed then
-			signals.Changed:DisconnectAll()
-		end
-		if signals.ChildAdded then
-			signals.ChildAdded:DisconnectAll()
-		end
-		if signals.ChildRemoved then
-			signals.ChildRemoved:DisconnectAll()
+	local data_signals = DataSignals[token]
+	if data_signals then
+		for path, signals in data_signals do
+			if signals.Changed then
+				signals.Changed:DisconnectAll()
+			end
+			if signals.ChildAdded then
+				signals.ChildAdded:DisconnectAll()
+			end
+			if signals.ChildRemoved then
+				signals.ChildRemoved:DisconnectAll()
+			end
 		end
 	end
 	
 	local root = RemoteTables[token]
-	for k, v in root do
-		UnregisterValue(token, root, k)
+	if root then
+		for k, v in root do
+			UnregisterValue(token, root, k)
+		end
 	end
 	
 	DataSignals[token] = nil
