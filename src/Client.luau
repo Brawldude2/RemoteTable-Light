@@ -321,7 +321,7 @@ function Client.DestroySignal(token_name: TokenName, signal_type: SignalType, pa
 	if not signals then return end
 	
 	if signals[signal_type] then
-		signals[signal_type]:Destroy()
+		signals[signal_type]:DisconnectAll()
 		signals[signal_type] = nil
 	end
 end
