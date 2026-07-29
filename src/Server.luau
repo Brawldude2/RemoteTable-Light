@@ -330,6 +330,8 @@ function Server.Create<T>(token_name: string, template: T, selective_replication
 	TokenLinks[root] = token
 	if not selective_replication then
 		selective_replication = {}
+	else
+		selective_replication = table.clone(selective_replication)
 	end
 	for k, v in root :: any do
 		if selective_replication[k] == nil and typeof(root[k]) == "table" then
